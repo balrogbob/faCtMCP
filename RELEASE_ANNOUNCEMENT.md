@@ -1,4 +1,4 @@
-# faCtMCP 0.1.0 is out
+# faCtMCP 0.1.0 is out 
 
 I got tired of fighting interpreter overhead, runtime friction, and the general feeling that every time you want to build serious agent tooling, you are one dependency spiral away from pain.
 
