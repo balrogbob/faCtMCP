@@ -1,0 +1,24 @@
+name: faCtMCP CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S faCtMCP -B faCtMCP/build -DFACTMCP_BUILD_EXAMPLES=ON -DFACTMCP_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build faCtMCP/build --config Release
+
+      - name: Test
+        run: ctest -C Release --test-dir faCtMCP/build --output-on-failure
