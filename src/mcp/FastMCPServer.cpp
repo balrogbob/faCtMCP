@@ -501,10 +501,7 @@ std::string FastMCPServer::parse_http_body(const std::string& http_request) {
 }
 
 std::string FastMCPServer::handle_post_messages_jsonrpc(const std::string& body, const std::string& session_header, const std::string& protocol_version_header, bool* out_is_notification) {
-    if (!protocol_version_header.empty() && protocol_version_header != protocol_version_) {
-        return "";
-    }
-    if (!validate_session(session_header)) {
+    if (!protocol_version_header.empty() && protocol_version_header != protocol_version_ && protocol_version_header != "2024-11-05" && protocol_version_header != "2025-03-26") {
         return "";
     }
 
@@ -513,6 +510,14 @@ std::string FastMCPServer::handle_post_messages_jsonrpc(const std::string& body,
 
     if (out_is_notification) {
         *out_is_notification = !is_request;
+    }
+
+    if (method == "initialize") {
+        return handle_jsonrpc(body);
+    }
+
+    if (!validate_session(session_header)) {
+        return "";
     }
 
     if (!is_request) {
@@ -572,6 +577,7 @@ void FastMCPServer::handle_sse_stream(SOCKET client_socket, const std::string& l
         client.socket = client_socket;
         client.active = true;
         client.last_event_id = resume_from;
+        client.legacy_sse_mode = false;
         sse_clients_.push_back(client);
     }
 
@@ -678,8 +684,13 @@ void FastMCPServer::handle_client(SOCKET client_socket) {
     }
 
     if (method == "GET" && (path == "/" || path == "/mcp" || path.empty())) {
-        const std::string response = build_http_response(R"({"ok":true,"transport":"mcp"})", 200);
-        send(client_socket, response.c_str(), static_cast<int>(response.size()), 0);
+        std::string accept_header = extract_header(request, "Accept");
+        if (accept_header.find("text/event-stream") != std::string::npos) {
+            std::string last_event_id = extract_header(request, "Last-Event-ID");
+            handle_sse_stream(client_socket, last_event_id);
+        } else {
+            handle_sse_client(client_socket);
+        }
         return;
     }
 
@@ -742,14 +753,7 @@ void FastMCPServer::handle_client(SOCKET client_socket) {
         }
     }
 
-    if (path == "/messages") {
-        handle_post_messages(client_socket, body, session_header, protocol_version_header, legacy_sse_mode);
-        return;
-    }
-
-    const std::string response_body = handle_jsonrpc(body);
-    const std::string http_response = build_http_response(response_body);
-    send(client_socket, http_response.c_str(), static_cast<int>(http_response.size()), 0);
+    handle_post_messages(client_socket, body, session_header, protocol_version_header, legacy_sse_mode);
 }
 
 void FastMCPServer::handle_sse_client(SOCKET client_socket) {
