@@ -77,6 +77,7 @@ private:
     std::string server_name_ = "faCtMCP";
     std::string server_version_ = "0.1.0";
     std::string protocol_version_ = "2025-06-18";
+    std::string active_protocol_version_ = "2025-06-18";
 
     bool init_socket_runtime();
     void cleanup_socket_runtime();

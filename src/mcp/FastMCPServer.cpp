@@ -100,9 +100,30 @@ std::string json_method(const std::string& body) {
 }
 
 std::string json_id(const std::string& body) {
-    std::string id = json_number_field(body, "id");
-    if (!id.empty()) return id;
-    return json_string_field(body, "id");
+    const std::string needle = "\"id\"";
+    size_t pos = body.find(needle);
+    if (pos == std::string::npos) return "";
+    pos = body.find(':', pos);
+    if (pos == std::string::npos) return "";
+    ++pos;
+    while (pos < body.size() && std::isspace(static_cast<unsigned char>(body[pos]))) {
+        ++pos;
+    }
+    if (pos >= body.size()) return "";
+    if (body[pos] == '"') {
+        size_t end = pos + 1;
+        while (end < body.size()) {
+            if (body[end] == '"' && body[end - 1] != '\\') break;
+            ++end;
+        }
+        if (end >= body.size()) return "";
+        return body.substr(pos, end - pos + 1);
+    }
+    size_t end = pos;
+    while (end < body.size() && body[end] != ',' && body[end] != '}' && !std::isspace(static_cast<unsigned char>(body[end]))) {
+        ++end;
+    }
+    return body.substr(pos, end - pos);
 }
 
 bool json_has_id(const std::string& body) {
@@ -138,6 +159,14 @@ std::string jsonrpc_result(const std::string& id, const std::string& result) {
 std::string jsonrpc_error(const std::string& id, int code, const std::string& message) {
     return std::string("{\"jsonrpc\":\"2.0\",\"id\":") + (id.empty() ? "null" : id) +
            ",\"error\":{\"code\":" + std::to_string(code) + ",\"message\":\"" + json_escape(message) + "\"}}";
+}
+
+std::string negotiated_protocol_version(const std::string& body, const std::string& fallback) {
+    const std::string requested = json_string_field(body, "protocolVersion");
+    if (requested == "2024-11-05" || requested == "2025-03-26" || requested == "2025-06-18") {
+        return requested;
+    }
+    return fallback;
 }
 
 std::string injection_suffix(const std::string& text) {
@@ -317,7 +346,7 @@ std::string FastMCPServer::build_http_response(const std::string& body, int stat
     if (!session_id_.empty()) {
         response << "Mcp-Session-Id: " << session_id_ << "\r\n";
     }
-    response << "MCP-Protocol-Version: " << protocol_version_ << "\r\n";
+    response << "MCP-Protocol-Version: " << active_protocol_version_ << "\r\n";
     for (const auto& [key, value] : extra_headers) {
         response << key << ": " << value << "\r\n";
     }
@@ -336,7 +365,7 @@ std::string FastMCPServer::build_sse_response(const std::string& body) {
     if (!session_id_.empty()) {
         response << "Mcp-Session-Id: " << session_id_ << "\r\n";
     }
-    response << "MCP-Protocol-Version: " << protocol_version_ << "\r\n";
+    response << "MCP-Protocol-Version: " << active_protocol_version_ << "\r\n";
     response << "\r\n";
     response << body;
     return response.str();
@@ -404,7 +433,15 @@ std::string FastMCPServer::handle_jsonrpc(const std::string& body) {
 
     if (method == "initialize") {
         session_id_ = generate_session_id();
-        return jsonrpc_result(id, R"({"protocolVersion":")" + protocol_version_ + R"(","capabilities":{"tools":{},"prompts":{},"resources":{},"logging":{}},"serverInfo":{"name":")" + json_escape(server_name_) + R"(","version":")" + json_escape(server_version_) + R"("}})" );
+        const std::string negotiated = negotiated_protocol_version(body, protocol_version_);
+        active_protocol_version_ = negotiated;
+        return jsonrpc_result(
+            id,
+            std::string("{\"protocolVersion\":\"") + json_escape(negotiated) +
+                "\",\"capabilities\":{\"tools\":{},\"prompts\":{},\"resources\":{},\"logging\":{}},"
+                "\"serverInfo\":{\"name\":\"" + json_escape(server_name_) +
+                "\",\"version\":\"" + json_escape(server_version_) + "\"}}"
+        );
     }
 
     if (method == "notifications/initialized") {
@@ -536,7 +573,7 @@ void FastMCPServer::handle_post_messages(SOCKET client_socket, const std::string
         if (!session_id_.empty()) {
             response += "Mcp-Session-Id: " + session_id_ + "\r\n";
         }
-        response += "MCP-Protocol-Version: " + protocol_version_ + "\r\n";
+        response += "MCP-Protocol-Version: " + active_protocol_version_ + "\r\n";
         response += "Content-Length: 0\r\n\r\n";
         send(client_socket, response.c_str(), static_cast<int>(response.size()), 0);
         return;
@@ -549,7 +586,7 @@ void FastMCPServer::handle_post_messages(SOCKET client_socket, const std::string
         if (!session_id_.empty()) {
             response += "Mcp-Session-Id: " + session_id_ + "\r\n";
         }
-        response += "MCP-Protocol-Version: " + protocol_version_ + "\r\n";
+        response += "MCP-Protocol-Version: " + active_protocol_version_ + "\r\n";
         response += "Content-Length: 0\r\n\r\n";
         send(client_socket, response.c_str(), static_cast<int>(response.size()), 0);
         return;
@@ -589,7 +626,7 @@ void FastMCPServer::handle_sse_stream(SOCKET client_socket, const std::string& l
     if (!session_id_.empty()) {
         headers += "Mcp-Session-Id: " + session_id_ + "\r\n";
     }
-    headers += "MCP-Protocol-Version: " + protocol_version_ + "\r\n";
+    headers += "MCP-Protocol-Version: " + active_protocol_version_ + "\r\n";
     headers += "\r\n";
     send(client_socket, headers.c_str(), static_cast<int>(headers.size()), 0);
 
