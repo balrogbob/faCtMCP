@@ -522,13 +522,24 @@ std::string FastMCPServer::handle_post_messages_jsonrpc(const std::string& body,
     return handle_jsonrpc(body);
 }
 
-void FastMCPServer::handle_post_messages(SOCKET client_socket, const std::string& body, const std::string& session_header, const std::string& protocol_version_header) {
+void FastMCPServer::handle_post_messages(SOCKET client_socket, const std::string& body, const std::string& session_header, const std::string& protocol_version_header, bool legacy_sse_mode) {
     bool is_notification = false;
     std::string response_body = handle_post_messages_jsonrpc(body, session_header, protocol_version_header, &is_notification);
 
     if (is_notification || response_body.empty()) {
-        std::map<std::string, std::string> headers;
-        headers["Content-Length"] = "0";
+        std::string response = "HTTP/1.1 202 Accepted\r\n";
+        if (!session_id_.empty()) {
+            response += "Mcp-Session-Id: " + session_id_ + "\r\n";
+        }
+        response += "MCP-Protocol-Version: " + protocol_version_ + "\r\n";
+        response += "Content-Length: 0\r\n\r\n";
+        send(client_socket, response.c_str(), static_cast<int>(response.size()), 0);
+        return;
+    }
+
+    if (legacy_sse_mode) {
+        uint64_t event_id = next_event_id_.fetch_add(1);
+        broadcast_sse_event("message", response_body, event_id);
         std::string response = "HTTP/1.1 202 Accepted\r\n";
         if (!session_id_.empty()) {
             response += "Mcp-Session-Id: " + session_id_ + "\r\n";
@@ -720,8 +731,19 @@ void FastMCPServer::handle_client(SOCKET client_socket) {
 
     const std::string body = parse_http_body(request);
 
+    bool legacy_sse_mode = false;
+    {
+        std::lock_guard<std::mutex> lock(sse_clients_mutex_);
+        for (const auto& client : sse_clients_) {
+            if (client.active && client.legacy_sse_mode) {
+                legacy_sse_mode = true;
+                break;
+            }
+        }
+    }
+
     if (path == "/messages") {
-        handle_post_messages(client_socket, body, session_header, protocol_version_header);
+        handle_post_messages(client_socket, body, session_header, protocol_version_header, legacy_sse_mode);
         return;
     }
 
@@ -731,8 +753,56 @@ void FastMCPServer::handle_client(SOCKET client_socket) {
 }
 
 void FastMCPServer::handle_sse_client(SOCKET client_socket) {
-    const std::string response = build_sse_response("event: endpoint\ndata: /messages\n\n");
-    send(client_socket, response.c_str(), static_cast<int>(response.size()), 0);
+    std::string headers = "HTTP/1.1 200 OK\r\n";
+    headers += "Content-Type: text/event-stream\r\n";
+    headers += "Cache-Control: no-cache\r\n";
+    headers += "Connection: keep-alive\r\n";
+    headers += "Access-Control-Allow-Origin: *\r\n";
+    headers += "\r\n";
+    headers += "event: endpoint\ndata: /messages\n\n";
+    send(client_socket, headers.c_str(), static_cast<int>(headers.size()), 0);
+
+    {
+        std::lock_guard<std::mutex> lock(sse_clients_mutex_);
+        SSEClient client;
+        client.socket = client_socket;
+        client.active = true;
+        client.last_event_id = 0;
+        client.legacy_sse_mode = true;
+        sse_clients_.push_back(client);
+    }
+
+#ifdef _WIN32
+    u_long mode = 1;
+    ioctlsocket(client_socket, FIONBIO, &mode);
+#else
+    int flags = fcntl(client_socket, F_GETFL, 0);
+    fcntl(client_socket, F_SETFL, flags | O_NONBLOCK);
+#endif
+
+    fd_set read_fds;
+    struct timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+
+    while (running_) {
+        FD_ZERO(&read_fds);
+        FD_SET(client_socket, &read_fds);
+
+        int ret = select(static_cast<int>(client_socket + 1), &read_fds, nullptr, nullptr, &tv);
+        if (ret == SOCKET_ERROR) {
+            break;
+        }
+        if (ret > 0) {
+            char buf[256];
+            int n = recv(client_socket, buf, sizeof(buf), 0);
+            if (n <= 0) {
+                break;
+            }
+        }
+    }
+
+    remove_sse_client(client_socket);
 }
 
 void FastMCPServer::register_command(const std::string& name,

@@ -58,6 +58,7 @@ private:
         SOCKET socket;
         bool active;
         uint64_t last_event_id;
+        bool legacy_sse_mode;
     };
 
     Transport transport_;
@@ -91,7 +92,7 @@ private:
     std::string append_injection_context(const std::string& result);
     void handle_sse_client(SOCKET client_socket);
     void handle_sse_stream(SOCKET client_socket, const std::string& last_event_id);
-    void handle_post_messages(SOCKET client_socket, const std::string& body, const std::string& session_header, const std::string& protocol_version_header);
+    void handle_post_messages(SOCKET client_socket, const std::string& body, const std::string& session_header, const std::string& protocol_version_header, bool legacy_sse_mode = false);
     std::string handle_post_messages_jsonrpc(const std::string& body, const std::string& session_header, const std::string& protocol_version_header, bool* out_is_notification);
     void broadcast_sse_event(const std::string& event, const std::string& data, uint64_t event_id);
     std::string generate_session_id();
