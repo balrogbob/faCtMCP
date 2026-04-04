@@ -1,4 +1,4 @@
-# faCtMCP 0.1.0 is out 
+# faCtMCP 1.0.0 is out
 
 I got tired of fighting interpreter overhead, runtime friction, and the general feeling that every time you want to build serious agent tooling, you are one dependency spiral away from pain.
 
@@ -10,7 +10,7 @@ So I did.
 
 `faCtMCP` is a standalone MCP server core with a C ABI, written as a native implementation for people who want fast, embeddable MCP infrastructure without dragging an entire scripting ecosystem behind it.
 
-This release comes out of weeks of converting, reworking, and hardening MCP tooling concepts that were originally living across TypeScript, JavaScript, and Python - and rebuilding them into native C++ with a C-facing library surface.
+This stable release comes out of converting, reworking, and hardening MCP tooling concepts that were originally living across TypeScript, JavaScript, and Python, then rebuilding them into native C++ with a C-facing library surface.
 
 ## What it is
 
@@ -21,6 +21,18 @@ This release comes out of weeks of converting, reworking, and hardening MCP tool
 - native C++ smoke client
 - protocol and endpoint tests
 - standalone example MCP servers
+
+## What changed since initial commit
+
+- hardened HTTP + stdio transport behavior for production use
+- added full streamable HTTP handling across GET/POST paths
+- added and refined SSE handling, including session behavior updates
+- added negotiated protocol version support
+- now supports MCP protocol versions `2024-11-05`, `2025-03-26`, and `2025-06-18`
+- added legacy protocol compatibility logic for older clients
+- improved JSON-RPC POST message handling across protocol variants
+- updated response behavior and headers to align with negotiated versions
+- validated compatibility with real clients including ChatMCP, OpenCode, and LM Studio
 
 ## What it ships with
 
@@ -47,13 +59,22 @@ Because I wanted:
 - something embeddable from C/C++ and callable from anything that can speak C ABI
 - something that does not make me feel like I am negotiating with a runtime every time I want performance or control
 
-## First release highlights
+## 1.0.0 highlights
 
 - MIT licensed
 - packaged for downstream use
-- tested stdio framing
+- tested stdio framing and protocol paths
 - tested HTTP routes like `/mcp`, `/tools`, and `/sse`
-- ready to live in its own public repo
+- production-stable transport and protocol behavior
+- broad protocol compatibility, including legacy flows
+
+## In numbers
+
+- `1.0.0` stable
+- `3` supported MCP protocol versions (`2024-11-05`, `2025-03-26`, `2025-06-18`)
+- `2` transports (stdio, HTTP)
+- `4` example server binaries
+- `120%` commitment to practical protocol coverage, including legacy support
 
 ## Who this is for
 

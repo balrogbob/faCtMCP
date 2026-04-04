@@ -4,6 +4,27 @@
 
 It is meant to be embedded into other applications so they can expose custom MCP tools without having to reimplement transport, JSON-RPC framing, or tool dispatch.
 
+## Release status
+
+- stable: `1.0.0`
+- supports MCP protocol versions: `2024-11-05`, `2025-03-26`, `2025-06-18`
+- includes legacy protocol compatibility mode for older clients
+
+## Since initial commit
+
+- native standalone MCP core in C++ with a C ABI (`include/factmcp.h`)
+- shared and static library outputs for downstream embedding
+- stdio and HTTP transports with JSON-RPC 2.0 request processing
+- HTTP endpoints for MCP traffic and discovery (`/mcp`, `/tools`, `/sse`)
+- streamable HTTP behavior with GET/POST support and SSE event delivery
+- negotiated protocol version handling and response header updates
+- legacy SSE handling improvements for older protocol/client behavior
+- example stdio servers: echo, math, filesystem/search suite, code/project/knowledge-graph suite
+- C++ smoke client utility for quick protocol validation
+- protocol and endpoint test coverage for stdio and HTTP flows
+- CMake package exports for easy `find_package(faCtMCP)` integration
+- validated interoperability against multiple MCP clients (including legacy-leaning client behavior)
+
 ## What ships
 
 - shared library build (`faCtMCP.dll`)
