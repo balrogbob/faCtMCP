@@ -388,6 +388,9 @@ void FastMCPServer::broadcast_sse_event(const std::string& event, const std::str
             to_remove.push_back(i);
             continue;
         }
+        if (!sse_clients_[i].legacy_sse_mode) {
+            continue;
+        }
         int sent = send(sse_clients_[i].socket, sse_data.c_str(), static_cast<int>(sse_data.size()), 0);
         if (sent == SOCKET_ERROR) {
             sse_clients_[i].active = false;
@@ -726,7 +729,8 @@ void FastMCPServer::handle_client(SOCKET client_socket) {
             std::string last_event_id = extract_header(request, "Last-Event-ID");
             handle_sse_stream(client_socket, last_event_id);
         } else {
-            handle_sse_client(client_socket);
+            const std::string response = build_http_response(R"({"ok":true,"transport":"mcp"})", 200);
+            send(client_socket, response.c_str(), static_cast<int>(response.size()), 0);
         }
         return;
     }
